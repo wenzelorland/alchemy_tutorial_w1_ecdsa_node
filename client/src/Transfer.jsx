@@ -1,23 +1,40 @@
 import { useState } from "react";
 import server from "./server";
+import { sign } from "ethereum-cryptography/secp256k1";
+import { keccak256 } from "ethereum-cryptography/keccak";
+import { utf8ToBytes } from "ethereum-cryptography/utils";
 
-function Transfer({ address, setBalance }) {
+function Transfer({ setBalance, setAddress }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
 
   const setValue = (setter) => (evt) => setter(evt.target.value);
 
+  function hashMessage(message) {
+    const bytes = utf8ToBytes(message);
+    return keccak256(bytes);
+  }
   async function transfer(evt) {
     evt.preventDefault();
+    const message = {
+      amount: parseInt(sendAmount),
+      recipient,
+    };
+    const messageHash = hashMessage(JSON.stringify(message));
+    const [sig, recoveryBit] = await sign(messageHash, privateKey, {
+      recovered: true,
+    });
 
     try {
       const {
-        data: { balance },
+        data: { balance, sender },
       } = await server.post(`send`, {
-        sender: address,
-        amount: parseInt(sendAmount),
-        recipient,
+        message: message,
+        sig: sig,
+        recoveryBit: recoveryBit,
       });
+      setAddress(sender);
       setBalance(balance);
     } catch (ex) {
       alert(ex.response.data.message);
@@ -34,6 +51,15 @@ function Transfer({ address, setBalance }) {
           placeholder="1, 2, 3..."
           value={sendAmount}
           onChange={setValue(setSendAmount)}
+        ></input>
+      </label>
+
+      <label>
+        Enter Private Key
+        <input
+          placeholder="0x...."
+          value={privateKey}
+          onChange={setValue(setPrivateKey)}
         ></input>
       </label>
 
